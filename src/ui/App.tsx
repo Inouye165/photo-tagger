@@ -67,24 +67,45 @@ export function App() {
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    
+    // Clear previous errors and state
     setFileError(null)
     setImageError(null)
     setFileName(file.name)
     setFileSize(file.size)
     if (objectUrl) URL.revokeObjectURL(objectUrl)
+    
+    // Validate file type
+    const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif']
+    const isSupportedType = supportedTypes.includes(file.type) || /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(file.name)
+    
+    if (!isSupportedType) {
+      setFileError(`Unsupported file type: ${file.type || 'unknown'}. Supported formats: JPEG, PNG, GIF, WebP, HEIC, HEIF`)
+      return
+    }
+    
+    // Check file size (warn if > 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      setFileError(`Large file detected (${(file.size / 1024 / 1024).toFixed(1)}MB). Processing may be slow.`)
+    }
+    
     // Prepare preview: Convert HEIC/HEIF to JPEG for browsers that can't display HEIC
     const isHeic = /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
     try {
       let previewBlob: Blob | null = null
+      let conversionError: string | null = null
+      
       if (isHeic) {
         if (preferLibheif) {
           try {
             previewBlob = await convertHeicToJpegBlob(file, 0.92)
-          } catch {
+          } catch (libheifErr: any) {
+            conversionError = `libheif failed: ${libheifErr?.message || 'Unknown error'}. `
             try {
               const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }) as Blob | Blob[]
               previewBlob = Array.isArray(converted) ? converted[0] : converted
-            } catch (e: any) {
+            } catch (heic2anyErr: any) {
+              conversionError += `heic2any also failed: ${heic2anyErr?.message || 'Unknown error'}`
               previewBlob = null
             }
           }
@@ -92,10 +113,12 @@ export function App() {
           try {
             const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }) as Blob | Blob[]
             previewBlob = Array.isArray(converted) ? converted[0] : converted
-          } catch {
+          } catch (heic2anyErr: any) {
+            conversionError = `heic2any failed: ${heic2anyErr?.message || 'Unknown error'}. `
             try {
               previewBlob = await convertHeicToJpegBlob(file, 0.92)
-            } catch (e: any) {
+            } catch (libheifErr: any) {
+              conversionError += `libheif also failed: ${libheifErr?.message || 'Unknown error'}`
               previewBlob = null
             }
           }
@@ -127,11 +150,15 @@ export function App() {
         }
       } else {
         setObjectUrl(null)
-        setImageError('Could not decode HEIC for preview. This file may be HDR/10-bit or unsupported. Try exporting as JPEG or set iOS Camera → Formats → Most Compatible.')
+        if (conversionError) {
+          setImageError(`HEIC conversion failed: ${conversionError}. This file may be HDR/10-bit, corrupted, or use an unsupported HEIC variant. Try: 1) Export as JPEG from Photos app, 2) Set iOS Camera → Formats → Most Compatible, or 3) Use the batch converter (heic-converter.js)`)
+        } else {
+          setImageError('Could not decode HEIC for preview. This file may be HDR/10-bit or unsupported. Try exporting as JPEG or set iOS Camera → Formats → Most Compatible.')
+        }
       }
     } catch (convErr: any) {
       setObjectUrl(null)
-      setImageError(convErr?.message ?? 'Failed to convert image for preview')
+      setImageError(`Unexpected error during image processing: ${convErr?.message || 'Unknown error'}. File may be corrupted or in an unsupported format.`)
     }
     try {
       const arrayBuffer = await file.arrayBuffer()
@@ -201,7 +228,17 @@ export function App() {
         <div className="preview">
           {imageError && <div className="error">{imageError}</div>}
           {objectUrl ? (
-            <img src={objectUrl} alt="Selected" />
+            <img 
+              src={objectUrl} 
+              alt="Selected" 
+              onError={(e) => {
+                setImageError(`Failed to load image: ${objectUrl}. The file may be corrupted or in an unsupported format.`)
+                setObjectUrl(null)
+              }}
+              onLoad={() => {
+                setImageError(null)
+              }}
+            />
           ) : (
             <div className="placeholder">No image selected</div>
           )}

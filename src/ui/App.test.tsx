@@ -70,6 +70,96 @@ describe('App', () => {
     expect(await screen.findByText(/no gps found/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /copy gps/i })).toBeDisabled()
   })
+
+  it('handles file validation errors', async () => {
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const file = makeFile('document.pdf', 'application/pdf')
+    await userEvent.upload(input, file)
+
+    // The app should handle the file but may not show an error immediately
+    // This test verifies the app doesn't crash with unsupported files
+    expect(screen.getByText('Photo Metadata Viewer')).toBeInTheDocument()
+  })
+
+  it('shows warning for large files', async () => {
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const largeFile = new File(['x'.repeat(60 * 1024 * 1024)], 'large.jpg', { type: 'image/jpeg' })
+    await userEvent.upload(input, largeFile)
+
+    expect(await screen.findByText(/large file detected/i)).toBeInTheDocument()
+  })
+
+  it('handles HEIC conversion errors gracefully', async () => {
+    const heic2any: any = (await import('heic2any')).default
+    heic2any.mockRejectedValue(new Error('HEIC conversion failed'))
+
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const file = makeFile('photo.heic', 'image/heic')
+    await userEvent.upload(input, file)
+
+    expect(await screen.findByText(/heic conversion failed/i)).toBeInTheDocument()
+  })
+
+  it('handles EXIF parsing errors', async () => {
+    const ExifReader: any = (await import('exifreader')).default
+    ExifReader.load.mockRejectedValue(new Error('EXIF parsing failed'))
+
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const file = makeFile('photo.jpg', 'image/jpeg')
+    await userEvent.upload(input, file)
+
+    expect(await screen.findByText(/exif parsing failed/i)).toBeInTheDocument()
+  })
+
+  it('enables copy metadata button when metadata is loaded', async () => {
+    const ExifReader: any = (await import('exifreader')).default
+    ExifReader.load.mockResolvedValue({
+      Make: { value: 'Apple' },
+      Model: { value: 'iPhone' }
+    })
+
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const file = makeFile('photo.jpg', 'image/jpeg')
+    await userEvent.upload(input, file)
+
+    const copyMetadata = screen.getByRole('button', { name: /copy metadata/i })
+    expect(copyMetadata).toBeEnabled()
+  })
+
+  it('shows save as JPEG button for HEIC files', async () => {
+    const heic2any: any = (await import('heic2any')).default
+    heic2any.mockResolvedValue(new Blob(['converted'], { type: 'image/jpeg' }))
+
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const file = makeFile('photo.heic', 'image/heic')
+    await userEvent.upload(input, file)
+
+    expect(await screen.findByRole('button', { name: /save as jpeg/i })).toBeInTheDocument()
+  })
+
+  it('handles image load errors', async () => {
+    render(<App />)
+    const input = screen.getByLabelText(/choose image/i)
+    const file = makeFile('photo.jpg', 'image/jpeg')
+    await userEvent.upload(input, file)
+
+    // Simulate image load error
+    const img = screen.getByAltText('Selected')
+    Object.defineProperty(img, 'complete', { value: false })
+    Object.defineProperty(img, 'naturalWidth', { value: 0 })
+    
+    // Trigger error event
+    const errorEvent = new Event('error')
+    img.dispatchEvent(errorEvent)
+
+    expect(await screen.findByText(/failed to load image/i)).toBeInTheDocument()
+  })
 })
 
 
