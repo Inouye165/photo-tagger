@@ -1,0 +1,16 @@
+{
+  "name": "heic-converter",
+  "version": "1.0.0",
+  "description": "Convert HEIC files to JPEG with metadata preservation",
+  "main": "heic-converter.js",
+  "scripts": {
+    "convert": "node heic-converter.js"
+  },
+  "dependencies": {
+    "libheif-js": "^1.19.8",
+    "sharp": "^0.33.0"
+  },
+  "bin": {
+    "heic-converter": "./heic-converter.js"
+  }
+}

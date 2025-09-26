@@ -3,6 +3,7 @@ import ExifReader from 'exifreader'
 import heic2any from 'heic2any'
 import { MapView } from './MapView'
 import { parseGpsFromExif } from '../utils/gps'
+import { convertHeicToJpegBlob } from '../utils/heic'
 
 type MetadataMap = Record<string, unknown>
 
@@ -38,6 +39,7 @@ function parseTags(tags: MetadataMap): ParsedTag[] {
 export function App() {
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
   const [rawTags, setRawTags] = useState<MetadataMap | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [fileSize, setFileSize] = useState<number | null>(null)
@@ -45,6 +47,7 @@ export function App() {
   const [isLargeMap, setIsLargeMap] = useState<boolean>(false)
   const [fullscreen, setFullscreen] = useState<boolean>(false)
   const [showMeta, setShowMeta] = useState<boolean>(false)
+  const [preferLibheif, setPreferLibheif] = useState<boolean>(false)
 
   const parsed = useMemo(() => rawTags ? parseTags(rawTags) : [], [rawTags])
 
@@ -65,23 +68,70 @@ export function App() {
     const file = e.target.files?.[0]
     if (!file) return
     setFileError(null)
+    setImageError(null)
     setFileName(file.name)
     setFileSize(file.size)
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     // Prepare preview: Convert HEIC/HEIF to JPEG for browsers that can't display HEIC
     const isHeic = /heic|heif/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
     try {
-      let previewBlob: Blob = file
+      let previewBlob: Blob | null = null
       if (isHeic) {
-        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }) as Blob | Blob[]
-        previewBlob = Array.isArray(converted) ? converted[0] : converted
+        if (preferLibheif) {
+          try {
+            previewBlob = await convertHeicToJpegBlob(file, 0.92)
+          } catch {
+            try {
+              const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }) as Blob | Blob[]
+              previewBlob = Array.isArray(converted) ? converted[0] : converted
+            } catch (e: any) {
+              previewBlob = null
+            }
+          }
+        } else {
+          try {
+            const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }) as Blob | Blob[]
+            previewBlob = Array.isArray(converted) ? converted[0] : converted
+          } catch {
+            try {
+              previewBlob = await convertHeicToJpegBlob(file, 0.92)
+            } catch (e: any) {
+              previewBlob = null
+            }
+          }
+        }
+      } else {
+        previewBlob = file
       }
-      const url = URL.createObjectURL(previewBlob)
-      setObjectUrl(url)
+
+      if (previewBlob) {
+        const url = URL.createObjectURL(previewBlob)
+        setObjectUrl(url)
+        
+        // If this was a successful HEIC conversion, offer to save the JPEG
+        if (isHeic && previewBlob !== file) {
+          setImageError(null)
+          // Add download link for the converted JPEG
+          const downloadUrl = URL.createObjectURL(previewBlob)
+          const link = document.createElement('a')
+          link.href = downloadUrl
+          link.download = fileName?.replace(/\.(heic|heif)$/i, '.jpg') || 'converted.jpg'
+          link.style.display = 'none'
+          document.body.appendChild(link)
+          // Store the download function for the save button
+          ;(window as any).__saveConvertedImage = () => {
+            link.click()
+            document.body.removeChild(link)
+            URL.revokeObjectURL(downloadUrl)
+          }
+        }
+      } else {
+        setObjectUrl(null)
+        setImageError('Could not decode HEIC for preview. This file may be HDR/10-bit or unsupported. Try exporting as JPEG or set iOS Camera → Formats → Most Compatible.')
+      }
     } catch (convErr: any) {
-      // If conversion fails, fallback to try displaying original (may not render)
-      const url = URL.createObjectURL(file)
-      setObjectUrl(url)
+      setObjectUrl(null)
+      setImageError(convErr?.message ?? 'Failed to convert image for preview')
     }
     try {
       const arrayBuffer = await file.arrayBuffer()
@@ -89,6 +139,28 @@ export function App() {
       setRawTags(tags as unknown as MetadataMap)
       const coords = parseGpsFromExif(tags as any)
       setGps(coords)
+
+      // Fallback: if HEIC couldn't be decoded for preview, try embedded JPEG thumbnail from EXIF
+      if (!objectUrl && isHeic) {
+        const anyTags: any = tags as any
+        const tn = anyTags?.thumbnail ?? anyTags?.Thumbnail ?? anyTags?.JPEGThumbnail ?? anyTags?.PreviewImage
+        const tnVal = tn?.value ?? tn?.data ?? tn
+        let thumbBlob: Blob | null = null
+        if (tnVal) {
+          if (tnVal instanceof Blob) {
+            thumbBlob = tnVal
+          } else if (tnVal instanceof ArrayBuffer) {
+            thumbBlob = new Blob([tnVal], { type: 'image/jpeg' })
+          } else if (ArrayBuffer.isView(tnVal) && tnVal.buffer) {
+            thumbBlob = new Blob([tnVal.buffer], { type: 'image/jpeg' })
+          }
+        }
+        if (thumbBlob) {
+          const url = URL.createObjectURL(thumbBlob)
+          setObjectUrl(url)
+          setImageError(null)
+        }
+      }
     } catch (err: any) {
       setRawTags(null)
       setFileError(err?.message ?? 'Failed to read metadata')
@@ -108,6 +180,14 @@ export function App() {
           <input type="file" accept="image/*,.heic,.heif" onChange={handleFileChange} />
           <span className="fileButton">Choose Image</span>
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={preferLibheif}
+            onChange={(ev) => setPreferLibheif(ev.target.checked)}
+          />
+          {' '}Prefer libheif decoder
+        </label>
         {fileName && (
           <div className="fileInfo">
             <span title={fileName}>{fileName}</span>
@@ -119,6 +199,7 @@ export function App() {
 
       <main className="content">
         <div className="preview">
+          {imageError && <div className="error">{imageError}</div>}
           {objectUrl ? (
             <img src={objectUrl} alt="Selected" />
           ) : (
@@ -160,6 +241,15 @@ export function App() {
             >
               Copy GPS
             </button>
+            {fileName?.match(/\.(heic|heif)$/i) && objectUrl && (
+              <button
+                className="mapToggle"
+                onClick={() => (window as any).__saveConvertedImage?.()}
+                title="Download converted JPEG with metadata preserved"
+              >
+                Save as JPEG
+              </button>
+            )}
           </div>
           {showMeta ? (
             parsed.length === 0 ? (
