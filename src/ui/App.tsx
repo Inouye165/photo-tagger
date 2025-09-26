@@ -274,6 +274,8 @@ export function App() {
               className="mapToggle"
               disabled={!gps}
               onClick={() => gps && copyToClipboard(`${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}`)}
+              // Truncate to 6 decimal places (~0.11m accuracy) since consumer GPS is only accurate to 5-30m
+              // Extra decimal places beyond 6 represent false precision (noise, not meaningful data)
               title={!gps ? 'No GPS found' : 'Copy GPS as "lat, lng"'}
             >
               Copy GPS
