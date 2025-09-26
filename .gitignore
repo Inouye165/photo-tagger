@@ -24,4 +24,6 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
+# playwright test artifacts
+.playwright-mcp/
 
