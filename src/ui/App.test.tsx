@@ -45,7 +45,7 @@ describe('App', () => {
     })
 
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.heic', 'image/heic')
     await userEvent.upload(input, file)
 
@@ -63,7 +63,7 @@ describe('App', () => {
     ExifReader.load.mockResolvedValue({})
 
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.jpg', 'image/jpeg')
     await userEvent.upload(input, file)
 
@@ -73,18 +73,18 @@ describe('App', () => {
 
   it('handles file validation errors', async () => {
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('document.pdf', 'application/pdf')
     await userEvent.upload(input, file)
 
     // The app should handle the file but may not show an error immediately
     // This test verifies the app doesn't crash with unsupported files
-    expect(screen.getByText('Photo Metadata Viewer')).toBeInTheDocument()
+    expect(screen.getByText('Photo Metadata Viewer & Batch Converter')).toBeInTheDocument()
   })
 
   it('shows warning for large files', async () => {
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const largeFile = new File(['x'.repeat(60 * 1024 * 1024)], 'large.jpg', { type: 'image/jpeg' })
     await userEvent.upload(input, largeFile)
 
@@ -96,7 +96,7 @@ describe('App', () => {
     heic2any.mockRejectedValue(new Error('HEIC conversion failed'))
 
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.heic', 'image/heic')
     await userEvent.upload(input, file)
 
@@ -108,7 +108,7 @@ describe('App', () => {
     ExifReader.load.mockRejectedValue(new Error('EXIF parsing failed'))
 
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.jpg', 'image/jpeg')
     await userEvent.upload(input, file)
 
@@ -123,7 +123,7 @@ describe('App', () => {
     })
 
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.jpg', 'image/jpeg')
     await userEvent.upload(input, file)
 
@@ -136,7 +136,7 @@ describe('App', () => {
     heic2any.mockResolvedValue(new Blob(['converted'], { type: 'image/jpeg' }))
 
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.heic', 'image/heic')
     await userEvent.upload(input, file)
 
@@ -145,7 +145,7 @@ describe('App', () => {
 
   it('handles image load errors', async () => {
     render(<App />)
-    const input = screen.getByLabelText(/choose image/i)
+    const input = screen.getByLabelText(/choose single image/i)
     const file = makeFile('photo.jpg', 'image/jpeg')
     await userEvent.upload(input, file)
 

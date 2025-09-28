@@ -217,21 +217,95 @@ function synthesizeDescription(params: {
 }): string {
   const { analysis, placeName, formattedDate, timeOfDay, exif } = params
   const bits: string[] = []
+
+  // Start with people descriptions
   if (analysis) {
     const people = typeof analysis.peopleCount === 'number' ? analysis.peopleCount : null
     const selfie = analysis.selfie === true
-    const who = selfie && people && people >= 2 ? 'a selfie of two people' : (selfie ? 'a selfie' : (people ? `${people} people` : null))
-    if (who) bits.push(who)
+    const peopleDescriptions = Array.isArray(analysis.peopleDescription) ? analysis.peopleDescription : []
+
+    if (peopleDescriptions.length > 0) {
+      bits.push(peopleDescriptions.join(', '))
+    } else if (selfie && people && people >= 2) {
+      bits.push('a selfie of two people')
+    } else if (selfie) {
+      bits.push('a selfie')
+    } else if (people) {
+      bits.push(`${people} people`)
+    }
+
+    // Add detailed animal descriptions
+    if (analysis.animals && (Array.isArray(analysis.animals.species) || Array.isArray(analysis.animals))) {
+      const species = Array.isArray(analysis.animals.species) ? analysis.animals.species : analysis.animals
+      const descriptions = Array.isArray(analysis.animals.description) ? analysis.animals.description : []
+      if (descriptions.length > 0) {
+        bits.push(descriptions.join(', '))
+      } else if (species.length > 0) {
+        bits.push(species.join(', '))
+      }
+    }
+
+    // Add detailed tree/plant descriptions
+    if (analysis.trees && (Array.isArray(analysis.trees.species) || Array.isArray(analysis.trees))) {
+      const species = Array.isArray(analysis.trees.species) ? analysis.trees.species : analysis.trees
+      const descriptions = Array.isArray(analysis.trees.description) ? analysis.trees.description : []
+      if (descriptions.length > 0) {
+        bits.push(descriptions.join(', '))
+      } else if (species.length > 0) {
+        bits.push(species.join(' and ') + ' trees')
+      }
+    }
+
+    // Add detailed plant descriptions
+    if (analysis.plants && Array.isArray(analysis.plants.types)) {
+      const descriptions = Array.isArray(analysis.plants.description) ? analysis.plants.description : []
+      if (descriptions.length > 0) {
+        bits.push(descriptions.join(', '))
+      } else if (analysis.plants.types.length > 0) {
+        bits.push(analysis.plants.types.join(', '))
+      }
+    }
+
+    // Add detailed water descriptions
+    if (analysis.water?.present) {
+      if (analysis.water.description) {
+        bits.push(analysis.water.description)
+      } else if (analysis.water.type) {
+        bits.push(analysis.water.type)
+      } else {
+        bits.push('water')
+      }
+    }
+
+    // Add subject and other elements
     if (analysis.subject) bits.push(String(analysis.subject))
-    if (analysis.water?.present) bits.push(analysis.water.type ? `${analysis.water.type}` : 'water')
-    if (Array.isArray(analysis.trees) && analysis.trees.length) bits.push(analysis.trees[0] + ' trees')
-    if (Array.isArray(analysis.animals) && analysis.animals.length) bits.push(analysis.animals.join(', '))
     if (analysis.landmark) bits.push(String(analysis.landmark))
+    if (Array.isArray(analysis.notableObjects) && analysis.notableObjects.length > 0) {
+      bits.push(analysis.notableObjects.join(', '))
+    }
   }
+
+  // Add location information prominently
   if (placeName) bits.push(`near ${placeName}`)
-  if (formattedDate) bits.push(`on ${formattedDate}${timeOfDay ? ` (${timeOfDay})` : ''}`)
+
+  // Add time and date information
+  if (formattedDate) {
+    let timeInfo = `on ${formattedDate}`
+    if (timeOfDay) timeInfo += ` during ${timeOfDay}`
+    bits.push(timeInfo)
+  } else if (timeOfDay) {
+    bits.push(`during ${timeOfDay}`)
+  }
+
+  // Add device information
   const device = exif?.Model ? String(exif.Model) : null
-  if (device) bits.push(`captured with ${device}`)
+  const make = exif?.Make ? String(exif.Make) : null
+  if (device && make) {
+    bits.push(`captured with ${make} ${device}`)
+  } else if (device) {
+    bits.push(`captured with ${device}`)
+  }
+
   const core = bits.filter(Boolean).join(', ')
   return core ? `This photo shows ${core}.` : 'This photo captures a memorable moment.'
 }
@@ -368,21 +442,24 @@ app.post('/api/welcome', async (req, res) => {
     // Stage 1: Visual analysis (if preview available)
     let analysis: any = null
     if (imagePreview) {
-      const analysisSystem = `You are a precise photo analyst. Identify concrete elements you can clearly see.
+      const analysisSystem = `You are an expert photo analyst providing rich, detailed descriptions of images. Analyze the photo thoroughly and provide specific, descriptive details about everything you can see.
+
 Return ONLY a compact JSON object as:
 { "analysis": {
-    "subject": string,                // e.g., mountain range, waterfall, forest trail
-    "setting": string,                // e.g., outdoors, viewpoint, lakeside, forest, urban
+    "subject": string,                // main subject with descriptive details (e.g., "majestic waterfall cascading down granite cliffs", "dense forest trail winding through pine trees")
+    "setting": string,                // detailed environment description (e.g., "rugged mountainous landscape", "peaceful lakeside meadow", "urban rooftop with city skyline")
     "peopleCount": number,            // integer 0..N
+    "peopleDescription": string[],    // rich descriptions: ["middle-aged man with salt-and-pepper hair and goatee wearing dark blue waffle-knit shirt", "young woman with warm brown hair smiling gently", "elderly hiker with backpack and walking stick"]
     "selfie": boolean,                // true if a close selfie featuring the photographer(s)
-    "notableObjects": string[],       // rocks, bridge, boardwalk, etc.
-    "water": { "present": boolean, "type"?: "river"|"lake"|"waterfall"|"ocean"|"stream" } | null,
-    "animals": string[] | null,       // list species/animals if clearly visible
-    "trees": string[] | null,         // e.g., pine, fir, aspen if identifiable; else []
+    "notableObjects": string[],       // specific objects: ["large light-colored granite rock face", "wooden footbridge", "stone cairn marking trail"]
+    "water": { "present": boolean, "type": string, "description": string } | null,  // type: "river", "lake", "waterfall", "ocean", "stream", "pond"; description: "rushing whitewater rapids", "mirror-calm lake reflecting mountains", "multi-tiered waterfall cascading down moss-covered rocks"
+    "animals": { "species": string[], "description": string[] } | null,  // species: ["white-tailed deer", "bald eagle", "grizzly bear"]; description: ["white-tailed deer grazing peacefully", "bald eagle soaring overhead with wings spread wide", "grizzly bear fishing in shallow stream"]
+    "trees": { "species": string[], "description": string[] } | null,     // species: ["ponderosa pine", "Douglas fir", "quaking aspen"]; description: ["tall ponderosa pines with reddish bark", "towering Douglas firs with drooping branches", "young aspen grove with white trunks and fluttering leaves"]
+    "plants": { "types": string[], "description": string[] } | null,     // types: ["wildflowers", "ferns", "moss", "sagebrush"]; description: ["vibrant wildflower meadow in full bloom", "lush green ferns carpeting the forest floor", "velvety green moss covering boulders", "fragrant sagebrush dotting the hillside"]
     "landmark": string | null,        // named landmark if obvious (leave null if uncertain)
-    "composition": string,            // e.g., wide selfie foreground, background vista
-    "lighting": string,               // e.g., sunny, golden-hour, overcast, harsh midday
-    "mood": string                    // e.g., joyful, serene
+    "composition": string,            // detailed composition: "close-up selfie with waterfall in background", "wide landscape shot with foreground interest", "intimate portrait with blurred natural background"
+    "lighting": string,               // specific lighting conditions: "bright indirect sunlight filtering through trees", "golden hour light casting long shadows", "overcast sky with soft diffused light", "harsh midday sun creating strong contrasts"
+    "mood": string                    // emotional atmosphere: "joyful and celebratory", "peaceful and contemplative", "adventurous and exciting", "serene and tranquil"
   } }`
 
       const analysisMessages = [
@@ -453,10 +530,11 @@ Return ONLY a compact JSON object as:
     const welcomeSystem = `You are a friendly photo assistant. Create a concise, dynamic welcome message for the user.
 Style and Requirements:
 - 1–2 sentences, warm and descriptive.
-- Use visual analysis to mention what the photo shows (e.g., subject, setting, selfie/people, water features, animals, trees).
-- If available, also weave in location (placeName), date (formattedDate), and time of day.
-- Avoid speculative or generic lines; prefer concrete details from 'analysis' and/or EXIF.
-- You MUST mention at least two concrete visual elements from analysis when present (e.g., "waterfall", "selfie with two people", "evergreen trees"). If analysis is null, mention that visual details are unavailable.
+- Use visual analysis to mention what the photo shows with specific details (e.g., "white-tailed deer grazing", "tall ponderosa pines", "rushing rapids", "young woman smiling").
+- Always include location (placeName), date (formattedDate), and time of day when available.
+- Mention the device/camera used if available in EXIF.
+- You MUST mention at least two concrete visual elements from analysis when present (e.g., specific animals, trees, plants, water features, people descriptions).
+- If analysis is null, mention that visual details are unavailable but still include available metadata.
 - End with an inviting question like: "What can I help you do with it today?"
 Output:
 Return ONLY JSON: { "welcomeMessage": string, "detailedDescription": string }`
