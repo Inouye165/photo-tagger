@@ -1,5 +1,6 @@
-import { MapContainer, Marker, Popup, TileLayer, Polygon, useMap, LayersControl } from 'react-leaflet'
-import L from 'leaflet'
+import { MapContainer, Marker, Popup, TileLayer, useMap, LayersControl } from 'react-leaflet'
+import { useEffect, useMemo, useRef } from 'react'
+import L, { LatLngBoundsExpression } from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 // Fix default marker icon paths in bundlers
@@ -14,34 +15,112 @@ const DefaultIcon = L.icon({
 })
 L.Marker.prototype.options.icon = DefaultIcon
 
-// Rough boundary of Yellowstone National Park (approximate, simplified)
-const YELLOWSTONE_POLY: [number, number][] = [
-  [44.742, -111.202], [44.771, -111.050], [44.893, -110.997], [44.968, -110.818],
-  [45.026, -110.676], [44.997, -110.530], [44.934, -110.428], [44.845, -110.379],
-  [44.737, -110.366], [44.604, -110.332], [44.498, -110.322], [44.424, -110.254],
-  [44.387, -110.110], [44.395, -109.969], [44.459, -109.842], [44.567, -109.787],
-  [44.677, -109.791], [44.763, -109.821], [44.833, -109.895], [44.920, -109.966],
-  [45.016, -110.028], [45.055, -110.147], [45.034, -110.312], [45.006, -110.493],
-  [44.969, -110.654], [44.892, -110.820], [44.836, -110.949], [44.773, -111.080],
-  [44.713, -111.173], [44.742, -111.202],
-]
 
-function ResizeOnPropChange({ dep }: { dep: unknown }) {
+function ResizeOnPropChange({ dep, bounds }: { dep: unknown; bounds?: LatLngBoundsExpression }) {
   const map = useMap()
   // Invalidate size when dependency (like container size toggle) changes
-  // and re-center to keep marker in view.
-  setTimeout(() => {
-    map.invalidateSize()
-  }, 0)
+  useEffect(() => {
+    const id = setTimeout(() => {
+      map.invalidateSize()
+      if (bounds) {
+        const fitBounds = L.latLngBounds(bounds)
+        const options: L.FitBoundsOptions = { padding: [20, 20] }
+        map.fitBounds(fitBounds, options)
+      }
+    }, 0)
+    return () => clearTimeout(id)
+  }, [map, dep, bounds])
   return null
 }
 
-export function MapView({ lat, lng, label, isLarge, resizeKey }: { lat: number; lng: number; label?: string; isLarge?: boolean; resizeKey?: unknown }) {
-  const position: [number, number] = [lat, lng]
+function RecenterOnChange({ position, zoom, recenterKey, bounds }: { position: [number, number]; zoom: number; recenterKey?: unknown; bounds?: LatLngBoundsExpression }) {
+  const map = useMap()
+  const lastCenter = useRef<[number, number] | null>(null)
+  const lastZoom = useRef<number | null>(null)
+  const lastKey = useRef<unknown>(null)
+  const lastBounds = useRef<L.LatLngBounds | null>(null)
+  useEffect(() => {
+    if (bounds) {
+      const targetBounds = L.latLngBounds(bounds)
+      const keyChanged = lastKey.current !== recenterKey
+      const boundsChanged = !lastBounds.current || !lastBounds.current.equals(targetBounds)
+      if (boundsChanged || keyChanged) {
+        const options: L.FitBoundsOptions = { padding: [20, 20] }
+        map.fitBounds(targetBounds, options)
+        lastBounds.current = targetBounds
+        lastKey.current = recenterKey
+      }
+      return
+    }
+
+    const centerChanged =
+      !lastCenter.current ||
+      lastCenter.current[0] !== position[0] ||
+      lastCenter.current[1] !== position[1]
+    const zoomChanged = lastZoom.current !== zoom
+    const keyChanged = lastKey.current !== recenterKey
+
+    if (centerChanged || zoomChanged || keyChanged) {
+      map.setView(position, zoom)
+      lastCenter.current = position
+      lastZoom.current = zoom
+      lastKey.current = recenterKey
+      lastBounds.current = null
+    }
+  }, [map, position, zoom, recenterKey, bounds])
+  return null
+}
+
+type MapViewProps = {
+  lat: number
+  lng: number
+  label?: string
+  isLarge?: boolean
+  resizeKey?: unknown
+  zoomLevel?: number
+  minZoom?: number
+  maxZoom?: number
+  recenterKey?: unknown
+  centerOverride?: [number, number]
+  boundsOverride?: LatLngBoundsExpression
+}
+
+export function MapView({
+  lat,
+  lng,
+  label,
+  isLarge,
+  resizeKey,
+  zoomLevel,
+  minZoom,
+  maxZoom,
+  recenterKey,
+  centerOverride,
+  boundsOverride,
+}: MapViewProps) {
+  const position = useMemo<[number, number]>(() => [lat, lng], [lat, lng])
+  const center = useMemo<[number, number]>(() => {
+    if (centerOverride) return centerOverride
+    if (boundsOverride) {
+      const bounds = L.latLngBounds(boundsOverride)
+      const { lat: bLat, lng: bLng } = bounds.getCenter()
+      return [bLat, bLng]
+    }
+    return position
+  }, [centerOverride, boundsOverride, position])
+  const zoom = zoomLevel ?? 11
   return (
     <div style={{ height: '100%', width: '100%' }}>
-      <MapContainer center={position} zoom={11} style={{ height: '100%', width: '100%' }} scrollWheelZoom={true}>
-        <ResizeOnPropChange dep={resizeKey ?? isLarge} />
+      <MapContainer
+        center={center}
+        zoom={zoom}
+        minZoom={minZoom}
+        maxZoom={maxZoom}
+        style={{ height: '100%', width: '100%', flex: 1 }}
+        scrollWheelZoom={true}
+      >
+        <RecenterOnChange position={center} zoom={zoom} recenterKey={recenterKey} bounds={boundsOverride} />
+        <ResizeOnPropChange dep={resizeKey ?? isLarge} bounds={boundsOverride} />
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="OpenStreetMap">
             <TileLayer
@@ -92,9 +171,6 @@ export function MapView({ lat, lng, label, isLarge, resizeKey }: { lat: number; 
             />
           </LayersControl.BaseLayer>
 
-          <LayersControl.Overlay checked name="Yellowstone boundary">
-            <Polygon positions={YELLOWSTONE_POLY} pathOptions={{ color: '#ffae00', weight: 3, dashArray: '6 4', fillOpacity: 0 }} />
-          </LayersControl.Overlay>
         </LayersControl>
         <Marker position={position}>
           {label && <Popup>{label}</Popup>}

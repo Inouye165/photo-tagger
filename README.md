@@ -1,10 +1,23 @@
-# Photo Tagger (Photo Metadata Viewer)
+# Photo Tagger (AI-Powered Photo Analysis & Captioning)
 
-A comprehensive client-side application for viewing photos, extracting metadata, and displaying GPS locations. Perfect for photographers, researchers, and anyone who needs to analyze image metadata.
+An intelligent photo analysis application that combines local EXIF metadata extraction with AI-powered visual analysis to generate detailed descriptions and enable interactive photo captioning. Perfect for photographers, researchers, and anyone who wants AI-powered photo insights.
 
-**🔒 Privacy-First**: All processing happens in your browser. No files are uploaded to any server.
+**🔒 Privacy-First**: All EXIF processing happens locally. AI analysis uses secure API calls with your own OpenAI key.
 
 ## ✨ Features
+
+### 🤖 **AI-Powered Analysis**
+- **Visual Analysis**: GPT-4 Vision analyzes photos for people, objects, settings, and mood
+- **Intelligent Descriptions**: Detailed photo descriptions combining EXIF data and visual analysis
+- **Smart Keywords**: AI-generated tags for better photo organization
+- **Contextual Insights**: Time of day, weather, composition, and emotional tone detection
+
+### 📝 **Interactive Captioning**
+- **Multiple Captions**: Add unlimited text overlays to photos
+- **Smart Placement**: AI-suggested positioning with automatic margin detection
+- **Drag & Drop**: Manual caption positioning with real-time preview
+- **Style Options**: Customizable fonts, colors, sizes, and positioning
+- **One-Shot Placement**: Intelligent caption placement with margin clamping
 
 ### 📸 **Image Support**
 - **All major formats**: JPEG, PNG, GIF, WebP, HEIC, HEIF
@@ -16,6 +29,7 @@ A comprehensive client-side application for viewing photos, extracting metadata,
 - **Interactive maps**: Powered by Leaflet with multiple base layers
 - **GPS extraction**: Automatic coordinate parsing from EXIF data
 - **Location display**: Pinpoint exact photo locations on map
+- **Reverse geocoding**: Convert coordinates to human-readable place names
 - **Fullscreen maps**: Expandable map view for detailed exploration
 
 ### 📊 **Metadata Analysis**
@@ -37,6 +51,7 @@ A comprehensive client-side application for viewing photos, extracting metadata,
 ### Prerequisites
 - **Node.js 18+** (Node 20+ recommended)
 - **npm** or **yarn**
+- **OpenAI API Key** (for AI analysis features)
 
 ### Installation
 ```bash
@@ -47,8 +62,20 @@ cd photo-tagger
 # Install dependencies
 npm install
 
+# Create environment file
+echo "OPENAI_API_KEY=your_openai_api_key_here" > .env
+
 # Start development server
 npm run dev
+```
+
+### Environment Setup
+Create a `.env` file in the project root with your OpenAI API key:
+```env
+OPENAI_API_KEY=your_openai_api_key_here
+# Optional: Customize AI models
+OPENAI_MODEL_VISION=gpt-4o
+OPENAI_MODEL_TEXT=gpt-4o-mini
 ```
 
 Open your browser to `http://localhost:5173` and start analyzing photos!
@@ -57,9 +84,11 @@ Open your browser to `http://localhost:5173` and start analyzing photos!
 
 ### Basic Workflow
 1. **Load a Photo**: Click "Choose Image" and select any supported image file
-2. **View Image**: The photo displays on the left with full metadata on the right
-3. **Explore GPS**: If the photo has location data, an interactive map appears
-4. **Copy Data**: Use the toolbar buttons to copy GPS coordinates or full metadata
+2. **AI Analysis**: The app automatically analyzes the photo and generates a detailed description
+3. **View Results**: See AI-generated description, keywords, and metadata on the right panel
+4. **Add Captions**: Use natural language to add and position text overlays on your photo
+5. **Explore GPS**: If the photo has location data, an interactive map appears
+6. **Copy Data**: Use the toolbar buttons to copy GPS coordinates, keywords, or full metadata
 
 ### HEIC Files
 - **Automatic conversion**: HEIC files are converted to JPEG for browser display
@@ -88,9 +117,12 @@ Open your browser to `http://localhost:5173` and start analyzing photos!
 ## 🛠️ Technical Stack
 
 - **Frontend**: React 18 + TypeScript + Vite
+- **Backend**: Node.js + Express + TypeScript
+- **AI Integration**: OpenAI GPT-4 Vision + GPT-4o-mini
 - **EXIF parsing**: exifreader (comprehensive metadata extraction)
 - **HEIC conversion**: heic2any + libheif-js (dual-engine approach)
 - **Mapping**: Leaflet + React-Leaflet (interactive maps)
+- **Reverse Geocoding**: Nominatim API (OpenStreetMap)
 - **Testing**: Vitest + Testing Library (comprehensive test coverage)
 
 ## 🧪 Testing
@@ -130,11 +162,15 @@ photo-tagger/
 ├── src/
 │   ├── ui/
 │   │   ├── App.tsx          # Main application component
-│   │   └── MapView.tsx      # Interactive map component
+│   │   ├── MapView.tsx      # Interactive map component
+│   │   ├── BatchConverter.tsx # Batch HEIC conversion UI
+│   │   └── FolderUpload.tsx # Folder upload component
 │   ├── utils/
 │   │   ├── gps.ts          # GPS coordinate parsing
-│   │   └── heic.ts         # HEIC conversion utilities
+│   │   ├── heic.ts         # HEIC conversion utilities
+│   │   └── summary.ts      # EXIF summary generation
 │   └── main.tsx            # Application entry point
+├── server.ts               # Express backend with AI integration
 ├── heic-converter.js       # Batch HEIC conversion tool
 ├── batch-convert.bat       # Windows batch converter
 └── converted-photos/       # Output directory for conversions
@@ -143,7 +179,8 @@ photo-tagger/
 ## 🔧 Development Scripts
 
 ```bash
-npm run dev       # Start development server
+npm run dev       # Start development server (frontend)
+npm run server    # Start backend server with AI integration
 npm run build     # Production build
 npm run preview   # Preview production build
 npm run test      # Run tests in watch mode

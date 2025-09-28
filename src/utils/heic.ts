@@ -1,8 +1,49 @@
 export async function convertHeicToJpegBlob(input: Blob, quality = 0.92): Promise<Blob> {
-  // Load ESM pre-bundled WASM to avoid external .wasm fetch issues
-  const mod: any = await import('libheif-js/libheif-wasm/libheif-bundle.mjs')
-  const heifNS: any = (mod && mod.HeifDecoder) ? mod : mod.default
-  if (!heifNS || !heifNS.HeifDecoder) throw new Error('libheif not available')
+  let heifNS: any
+
+  try {
+    // Try different import paths for libheif
+    console.log('Loading libheif...')
+
+    let mod: any
+    try {
+      // Try the WASM bundle path
+      mod = await import('libheif-js/wasm')
+    } catch (err1) {
+      console.log('WASM import failed, trying direct import...')
+      try {
+        // Try direct import
+        mod = await import('libheif-js')
+      } catch (err2) {
+        console.log('Direct import failed, trying bundle path...')
+        // Try bundle path
+        mod = await import('libheif-js/libheif-wasm/libheif-bundle.mjs')
+      }
+    }
+
+    console.log('libheif module loaded:', !!mod)
+
+    // Try different ways to access the decoder
+    if (mod && mod.HeifDecoder) {
+      heifNS = mod
+    } else if (mod && mod.default && mod.default.HeifDecoder) {
+      heifNS = mod.default
+    } else if (mod && mod.default) {
+      heifNS = mod.default
+    } else {
+      heifNS = mod
+    }
+
+    console.log('heifNS:', !!heifNS, 'HeifDecoder:', !!heifNS?.HeifDecoder)
+
+    if (!heifNS || !heifNS.HeifDecoder) {
+      console.error('HeifDecoder not found in module:', Object.keys(heifNS || {}))
+      throw new Error('libheif decoder not available')
+    }
+  } catch (importErr) {
+    console.error('Failed to import libheif:', importErr)
+    throw new Error('libheif not available')
+  }
 
   const arrayBuffer = await input.arrayBuffer()
   const decoder = new heifNS.HeifDecoder()
