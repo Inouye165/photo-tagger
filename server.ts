@@ -402,12 +402,26 @@ Keep "assistantMessage" short and do not include any extra fields.`
       }
     }
 
+    // Helper function to clean JSON response from markdown
+    const cleanJsonResponse = (content: string): string => {
+      // Remove markdown code blocks
+      let cleaned = content.trim()
+      if (cleaned.startsWith('```json')) {
+        cleaned = cleaned.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      return cleaned.trim()
+    }
+
     let parsed
     if (typeof llmResponse.content === 'string') {
       try {
-        parsed = assistantResponseSchema.safeParse(JSON.parse(llmResponse.content))
+        const cleanedContent = cleanJsonResponse(llmResponse.content)
+        parsed = assistantResponseSchema.safeParse(JSON.parse(cleanedContent))
       } catch (error) {
         console.warn('Assistant response was not valid JSON. Falling back to plain text.', error)
+        console.warn('Original content:', llmResponse.content)
       }
     }
 
@@ -623,10 +637,28 @@ Return ONLY JSON: { "welcomeMessage": string, "detailedDescription": string }`
       }
       return false
     }
-    let descriptionSource: 'model' | 'fallback' = 'model'
-    if (!hasVisuals(detailedDescription)) {
+    
+    // Determine description source based on whether visual analysis succeeded
+    // If we have visual analysis data, always consider it a successful visual analysis
+    let descriptionSource: 'model' | 'fallback' = analysis ? 'model' : 'fallback'
+    console.log('[welcome] analysis present:', !!analysis, 'initial descriptionSource:', descriptionSource)
+    
+    // If no visual analysis succeeded, use metadata-only description
+    if (!analysis) {
       detailedDescription = synthesizeDescription({ analysis, placeName, formattedDate, timeOfDay, exif: exifSummary ?? null })
       descriptionSource = 'fallback'
+      console.log('[welcome] no analysis - set to fallback')
+    } else {
+      // We have visual analysis - if the model description is poor, enhance it but keep as 'model'
+      const hasVisualContent = hasVisuals(detailedDescription)
+      console.log('[welcome] has visual content in description:', hasVisualContent, 'description length:', detailedDescription?.length)
+      if (!hasVisualContent) {
+        detailedDescription = synthesizeDescription({ analysis, placeName, formattedDate, timeOfDay, exif: exifSummary ?? null })
+        console.log('[welcome] enhanced description with synthesis')
+      }
+      // Always keep as 'model' when we have visual analysis, regardless of description source
+      descriptionSource = 'model'
+      console.log('[welcome] final descriptionSource set to model because analysis present')
     }
 
     console.log('[welcome] response summary', {

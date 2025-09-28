@@ -125,6 +125,14 @@ Open your browser to `http://localhost:5173` and start analyzing photos!
 - **Reverse Geocoding**: Nominatim API (OpenStreetMap)
 - **Testing**: Vitest + Testing Library (comprehensive test coverage)
 
+## 🔄 Recent Updates
+
+### Bug Fixes (Latest)
+- **Fixed visual description status**: Resolved issue where "visual description was unavailable" appeared even when AI analysis succeeded
+- **Enhanced caption functionality**: Fixed JSON parsing errors that prevented captions from being added to photos
+- **Improved error messaging**: Better distinction between failed AI analysis and enhanced metadata descriptions
+- **Debug logging**: Added comprehensive logging for troubleshooting AI analysis pipeline
+
 ## 🧪 Testing
 
 ### Test Coverage
@@ -199,6 +207,12 @@ npm run test:ui   # Interactive test UI
 - **Map tiles not loading**: Check ad-blockers, try different network
 - **HEIC conversion slow**: Large files take time, consider batch converter
 - **Memory issues**: Close other browser tabs, restart browser
+- **"Visual description was unavailable"**: This message now only appears when AI analysis actually fails, not when descriptions are enhanced with metadata
+
+### AI & Captioning Issues
+- **Captions not appearing**: Fixed JSON parsing issue with LLM responses that include markdown code blocks
+- **Incorrect "unavailable" messages**: Improved visual analysis status detection to distinguish between failed analysis and enhanced descriptions
+- **Caption positioning errors**: Use natural language commands like "add caption 'text' at bottom center"
 
 ### Production Issues
 - **Build failures**: Check Node.js version (18+ required)

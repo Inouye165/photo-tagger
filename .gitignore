@@ -30,4 +30,7 @@ pnpm-lock.yaml
 # converted photos (contains personal images)
 converted-photos/
 .env
+.env.bak
+.env.*
+*.env
 
